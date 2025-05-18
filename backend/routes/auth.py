@@ -16,6 +16,8 @@ async def login_user(credentials: LoginRequest):
 
     return {
         "status": "success",
+        "access_token":response.session.access_token,
+        "refresh_token":response.session.refresh_token,
         "user": {
             "id": response.user.id,
             "email": response.user.email
