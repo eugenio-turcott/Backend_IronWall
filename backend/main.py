@@ -1,6 +1,6 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from routes import auth, alerts, ports, devices
+from routes import auth, alerts, ports, devices, graphs
 
 app = FastAPI()
 
@@ -16,3 +16,4 @@ app.include_router(auth.router)
 app.include_router(alerts.router)
 app.include_router(devices.router)
 app.include_router(ports.router)
+app.include_router(graphs.router)
