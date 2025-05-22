@@ -18,26 +18,25 @@ security = HTTPBasic()
 OBSERVIUM_API_BASE = "http://201.150.5.213/api/v0"
 
 @router.get(
-    "/alerts",
-    summary="Download all alerts as JSON",
-    description="Fetches all alerts from Observium API and returns them as a downloadable JSON file.",
+    "/devices",
+    summary="Download all devices as JSON",
+    description="Fetches all devices from Observium API and returns them as a downloadable JSON file.",
     response_class=StreamingResponse,
-    tags=["Alerts"]
+    tags=["Devices"]
 )
-async def Alerts_get_all():
+async def Devices_get_all():
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                f"{OBSERVIUM_API_BASE}/alerts",
+                f"{OBSERVIUM_API_BASE}/devices",
                 auth=(OBS_USER,OBS_PASS)
             )
 
             if response.status_code != 200:
                 raise HTTPException(status_code=response.status_code, data="Failed to fetch alerts")
             
-            alerts_data = response.json()
-            print(alerts_data)
-            json_bytes = io.BytesIO(json.dumps(alerts_data,indent=2).encode("utf-8"))
+            device_data = response.json()
+            json_bytes = io.BytesIO(json.dumps(device_data,indent=2).encode("utf-8"))
             
             return StreamingResponse(
             json_bytes,
@@ -48,22 +47,22 @@ async def Alerts_get_all():
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get(
-    "/alerts/{alert_id}",
-    summary="Get alert by ID",
-    description="Fetches a specific alert from Observium API using the alert ID.",
-    tags=["Alerts"]
+    "/devices/{device_id}",
+    summary="Get devices by ID",
+    description="Fetches a specific device from Observium API using the alert ID.",
+    tags=["Devices"]
 )
-async def Alerts_get_id(alert_id: int = Path(..., description="The ID of the alert to retrieve"),
+async def Devices_get_id(device_id: int = Path(..., description="The ID of the alert to retrieve"),
 ):
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                f"{OBSERVIUM_API_BASE}/alerts/{alert_id}",
+                f"{OBSERVIUM_API_BASE}/devices/{device_id}",
                 auth=(OBS_USER,OBS_PASS)
             )
 
             if response.status_code != 200:
-                raise HTTPException(status_code=response.status_code, detail="Failed to fetch alert")
+                raise HTTPException(status_code=response.status_code, detail="Failed to fetch device")
             
             return response.json()
     except Exception as e:
