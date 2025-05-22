@@ -10,18 +10,16 @@ from dotenv import load_dotenv
 
 load_dotenv()  
 
+OBSERVIUM_API_BASE = os.getenv("API_URL")
 OBS_USER = os.getenv("API_USERNAME")
 OBS_PASS = os.getenv("API_PASSWORD")
 router = APIRouter()
 security = HTTPBasic()
 
-OBSERVIUM_API_BASE = "http://201.150.5.213/api/v0"
-
 @router.get(
     "/ports",
     summary="Download all ports as JSON",
     description="Fetches all ports from Observium API and returns them as a downloadable JSON file.",
-    response_class=StreamingResponse,
     tags=["Ports"]
 )
 async def Ports_get_all():
@@ -38,11 +36,7 @@ async def Ports_get_all():
             port_data = response.json()
             json_bytes = io.BytesIO(json.dumps(port_data,indent=2).encode("utf-8"))
             
-            return StreamingResponse(
-            json_bytes,
-            media_type="application/json",
-            headers={"Content-Disposition": "attachment; filename=alerts.json"}
-        )
+            return port_data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

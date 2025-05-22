@@ -8,20 +8,17 @@ import io
 import os
 from dotenv import load_dotenv
 
-load_dotenv()  # load variables from .env into environment
-
+load_dotenv() 
+OBSERVIUM_API_BASE = os.getenv("API_URL")
 OBS_USER = os.getenv("API_USERNAME")
 OBS_PASS = os.getenv("API_PASSWORD")
 router = APIRouter()
 security = HTTPBasic()
 
-OBSERVIUM_API_BASE = "http://201.150.5.213/api/v0"
-
 @router.get(
     "/devices",
     summary="Download all devices as JSON",
     description="Fetches all devices from Observium API and returns them as a downloadable JSON file.",
-    response_class=StreamingResponse,
     tags=["Devices"]
 )
 async def Devices_get_all():
@@ -36,13 +33,8 @@ async def Devices_get_all():
                 raise HTTPException(status_code=response.status_code, data="Failed to fetch alerts")
             
             device_data = response.json()
-            json_bytes = io.BytesIO(json.dumps(device_data,indent=2).encode("utf-8"))
-            
-            return StreamingResponse(
-            json_bytes,
-            media_type="application/json",
-            headers={"Content-Disposition": "attachment; filename=alerts.json"}
-        )
+            return device_data
+        
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

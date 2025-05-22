@@ -18,5 +18,5 @@ def get_curr_user(token: HTTPAuthorizationCredentials, algorithms=[ALGORITHM]):
     except JWTError:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Invalid token"
+            detail="Invalid token",
         )
