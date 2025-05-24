@@ -11,12 +11,15 @@ import asyncio
 
 load_dotenv()
 
-OBS_USER = os.getenv("API_USERNAME")
-OBS_PASS = os.getenv("API_PASSWORD")
+OBS_USER = os.getenv("API_USERNAME") or ""
+print(f"OBS_USER: {OBS_USER}")
+OBS_PASS = os.getenv("API_PASSWORD") or ""
+print(f"OBS_PASS: {OBS_PASS}")
 router = APIRouter()
 security = HTTPBasic()
 
 OBSERVIUM_API_BASE = os.getenv("API_URL")
+print(f"OBSERVIUM_API_BASE: {OBSERVIUM_API_BASE}")
 
 @router.get(
     "/alerts",
@@ -69,19 +72,19 @@ async def Alerts_get_all():
                     severity=alert.get("severity"),
                     status=alert.get("status"),
                     recovered=alert.get("recovered"),
-                    device={
-                        "hostname": device_info.get("hostname"),
-                        "ip": device_info.get("ip"),
-                        "location": device_info.get("location"),
-                        "location_id": device_info.get("location_id"),
-                        "location_lat": device_info.get("location_lat"),
-                        "location_lon": device_info.get("location_lon"),
-                        "sysName": device_info.get("sysName"),
-                        "os": device_info.get("os"),
-                        "vendor": device_info.get("vendor"),
-                        "type": device_info.get("type"),
-                        "status": device_info.get("status"),
-                    }
+                    device=DeviceInfo(
+                        hostname=device_info.get("hostname"),
+                        ip=device_info.get("ip"),
+                        location=device_info.get("location"),
+                        location_id=device_info.get("location_id"),
+                        location_lat=device_info.get("location_lat"),
+                        location_lon=device_info.get("location_lon"),
+                        sysName=device_info.get("sysName"),
+                        os=device_info.get("os"),
+                        vendor=device_info.get("vendor"),
+                        type=device_info.get("type"),
+                        status=device_info.get("status"),
+                    ) if device_info else None
                 )
                 parsed_alerts.append(parsed_alert)
            
