@@ -6,8 +6,6 @@ class LoginRequest(BaseModel):
     email: str
     password: str
 
-
-
 class DeviceInfo(BaseModel):
     hostname: Optional[str]
     ip: Optional[str]
@@ -30,3 +28,12 @@ class Alert(BaseModel):
     recovered: Optional[str]
     device: Optional[DeviceInfo] 
 
+class AlertDB(BaseModel):
+    alert_table_id: Optional[str]
+    device_id: Optional[str]
+    last_ok: Optional[str]
+    severity: Optional[str]
+    status: Optional[str]
+    recovered: Optional[str]
+    completado: Optional[str]
+    device: Optional[DeviceInfo] 
