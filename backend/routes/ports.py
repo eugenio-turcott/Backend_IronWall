@@ -39,6 +39,52 @@ async def Ports_get_all():
             return port_data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+@router.get(
+    "/ports/failures",
+    summary="Get devices with top port failures",
+    description="Fetches devices with top port failures Observium API.",
+    tags=["Ports"]
+)
+async def get_top_failures():
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{OBSERVIUM_API_BASE}/ports/?state=down&ignore=0",
+                auth=(OBS_USER,OBS_PASS)
+            )
+            print(response.json())
+            if response.status_code != 200:
+                raise HTTPException(status_code=response.status_code, detail="Failed to fetch device")
+            data = response.json()
+            failures = {}
+
+            for port in data.get("ports", {}).values():
+                device = port.get("sysName") or port.get("hostname") or "Unknown"
+                port_label = port.get("ifDescr") or port.get("port_label") or str(port.get("port_id"))
+
+                if device not in failures:
+                    failures[device] = []
+
+                failures[device].append(port_label)
+
+            top_5 = sorted(
+                failures.items(),
+                key=lambda x: len(x[1]),
+                reverse=True
+            )[:5]
+
+            return [
+                {
+                    "device": device,
+                    "fail_count": len(ports),
+                    "ports": ports
+                }
+                for device, ports in top_5
+            ]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 
 @router.get(
     "/ports/{port_id}",
@@ -61,3 +107,6 @@ async def Ports_get_id(port_id: int = Path(..., description="The ID of the alert
             return response.json()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+    
+

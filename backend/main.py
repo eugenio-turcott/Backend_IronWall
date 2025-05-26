@@ -18,8 +18,6 @@ async def scheduled_save_alerts():
 async def lifespan(app: FastAPI):
     global loop
     loop = asyncio.get_running_loop()  # guardamos el event loop principal
-    print("🚀 Iniciando servidor y scheduler...")
-
     # Ejecutar una vez al iniciar
     asyncio.create_task(scheduled_save_alerts())
 
@@ -30,10 +28,7 @@ async def lifespan(app: FastAPI):
     )
 
     scheduler.start()
-
     yield
-
-    print("🛑 Deteniendo servidor y scheduler...")
     scheduler.shutdown()
 
 app = FastAPI(lifespan=lifespan)
