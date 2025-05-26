@@ -91,31 +91,57 @@ def predict_next_year(data):
 
 @router.get(
     "/graphs/prediction",
-    summary="Get network traffic prediction for next year",
-    description="Uses ARIMA model to predict network traffic for the next year based on historical data",
+    summary="Get network traffic prediction with historical data",
+    description="Returns last 6 months of historical data + 1 year prediction",
     tags=["Graphs"]
 )
-async def get_graph_prediction():
+async def get_graph_prediction_with_history():
     try:
         if OBS_USER is None or OBS_PASS is None:
-            raise HTTPException(status_code=500, detail="API_USERNAME or API_PASSWORD environment variable not set")
+            raise HTTPException(status_code=500, detail="API credentials not set")
 
         async with httpx.AsyncClient() as client:
-            # First get the historical data
-            response = await client.get(
+            # Obtener datos históricos completos
+            historical_response = await client.get(
                 OBSERVIUM_API_GRAPH,
                 auth=(str(OBS_USER), str(OBS_PASS))
             )
-
-            if response.status_code != 200:
-                raise HTTPException(status_code=response.status_code, detail="Failed to fetch device data")
-
-            historical_data = response.json()
             
-            # Predict next year
+            if historical_response.status_code != 200:
+                raise HTTPException(status_code=historical_response.status_code, 
+                                 detail="Failed to fetch historical data")
+            
+            historical_data = historical_response.json()
+            
+            # Calcular cuántos puntos son 6 meses (asumiendo step está en segundos)
+            step = historical_data["meta"]["step"]
+            six_months_in_seconds = 6 * 30 * 24 * 60 * 60  # ~6 meses en segundos
+            points_to_keep = six_months_in_seconds // step
+            
+            # Filtrar solo los últimos 6 meses de datos históricos
+            historical_data["data"] = [series[-points_to_keep:] for series in historical_data["data"]]
+            historical_data["meta"]["start"] = historical_data["meta"]["end"] - (points_to_keep * step)
+            
+            # Obtener predicción
             predicted_data = predict_next_year(historical_data)
             
-            return predicted_data
+            # Combinar ambos conjuntos de datos
+            combined_data = {
+                "about": "Combined historical and predicted data",
+                "meta": {
+                    "historical_start": historical_data["meta"]["start"],
+                    "historical_end": historical_data["meta"]["end"],
+                    "prediction_start": predicted_data["meta"]["predicted_start"],
+                    "prediction_end": predicted_data["meta"]["predicted_end"],
+                    "step": historical_data["meta"]["step"],
+                    "legend": historical_data["meta"]["legend"],
+                    "cutoff_point": historical_data["meta"]["end"]  # Punto de corte entre histórico y predicción
+                },
+                "historical": historical_data["data"],
+                "prediction": predicted_data["data"]
+            }
+            
+            return combined_data
             
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
