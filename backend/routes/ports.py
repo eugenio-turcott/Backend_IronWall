@@ -39,6 +39,45 @@ async def Ports_get_all():
             return port_data
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+@router.get(
+    "/ports/total-consumption",
+    summary="Get total bandwidth consumption across all ports",
+    description="Sums the ifInOctets and ifOutOctets from all ports in Observium.",
+    tags=["Ports"]
+)
+async def get_total_port_consumption():
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{OBSERVIUM_API_BASE}/ports",
+                auth=(OBS_USER, OBS_PASS)
+            )
+
+            if response.status_code != 200:
+                raise HTTPException(status_code=response.status_code, detail="Failed to fetch ports")
+
+            ports_data = response.json().get("ports", {})
+            total_in = 0
+            total_out = 0
+
+            for port in ports_data.values():
+                try:
+                    total_in += int(port.get("ifInOctets", 0))
+                    total_out += int(port.get("ifOutOctets", 0))
+                except (ValueError, TypeError):
+                    continue
+
+            return {
+                "total_in_octets": total_in,
+                "total_out_octets": total_out,
+                "total_combined_octets": total_in + total_out,
+                "total_in_gb": round(total_in / (1024 ** 3), 2),
+                "total_out_gb": round(total_out / (1024 ** 3), 2),
+                "total_combined_gb": round((total_in + total_out) / (1024 ** 3), 2)
+            }
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
     
 @router.get(
     "/ports/failures",
