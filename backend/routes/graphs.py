@@ -23,10 +23,13 @@ security = HTTPBasic()
 )
 async def get_graph_traffic():
     try:
+        if OBS_USER is None or OBS_PASS is None:
+            raise HTTPException(status_code=500, detail="API_USERNAME or API_PASSWORD environment variable not set")
+
         async with httpx.AsyncClient() as client:
             response = await client.get(
                 f"{OBSERVIUM_API_GRAPH}",
-                auth=(OBS_USER,OBS_PASS)
+                auth=(str(OBS_USER), str(OBS_PASS))
             )
 
             if response.status_code != 200:
