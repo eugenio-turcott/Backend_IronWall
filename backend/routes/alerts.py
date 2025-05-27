@@ -13,15 +13,11 @@ import asyncio
 load_dotenv()
 
 OBS_USER = os.getenv("API_USERNAME") or ""
-print(f"OBS_USER: {OBS_USER}")
 OBS_PASS = os.getenv("API_PASSWORD") or ""
-print(f"OBS_PASS: {OBS_PASS}")
 router = APIRouter()
 security = HTTPBasic()
 
 OBSERVIUM_API_BASE = os.getenv("API_URL")
-print(f"OBSERVIUM_API_BASE: {OBSERVIUM_API_BASE}")
-
 URL = os.getenv("SUPABASE_URL")
 KEY = os.getenv("SUPABASE_API_KEY")
 if not URL or not KEY:
