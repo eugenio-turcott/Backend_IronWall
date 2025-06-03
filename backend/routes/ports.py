@@ -37,7 +37,7 @@ async def Ports_get_all():
             json_bytes = io.BytesIO(json.dumps(port_data,indent=2).encode("utf-8"))
             
             return port_data
-    except Exception as e:
+    except Exception as e:  
         raise HTTPException(status_code=500, detail=str(e))
 @router.get(
     "/ports/total-consumption",
@@ -156,6 +156,29 @@ async def get_total_port_consumption_non_intenet():
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+@router.get(
+    "/ports/peering",
+    summary="Get total bandwidth consumption across all non-internet ports",
+    description="Sums the ifInOctets and ifOutOctets from all ports in Observium.",
+    tags=["Ports"]
+)
+async def get_non_internet():
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{OBSERVIUM_API_BASE}/ports/?port_descr_type=transit",
+                auth=(OBS_USER, OBS_PASS)
+            )
+
+            if response.status_code != 200:
+                raise HTTPException(status_code=response.status_code, detail="Failed to fetch ports")
+            
+            return response.json
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
 @router.get(
     "/ports/failures",
     summary="Get devices with top port failures",
