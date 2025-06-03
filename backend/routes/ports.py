@@ -39,6 +39,7 @@ async def Ports_get_all():
             return port_data
     except Exception as e:  
         raise HTTPException(status_code=500, detail=str(e))
+
 @router.get(
     "/ports/total-consumption",
     summary="Get total bandwidth consumption across all ports",
