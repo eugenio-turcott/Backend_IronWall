@@ -24,7 +24,7 @@ async def lifespan(app: FastAPI):
     # Ejecutar cada 5 minutos
     scheduler.add_job(
         lambda: asyncio.run_coroutine_threadsafe(scheduled_save_alerts(), loop if loop is not None else asyncio.get_event_loop()),
-        trigger=IntervalTrigger(minutes=10)
+        trigger=IntervalTrigger(minutes=180)
     )
 
     scheduler.start()

@@ -6,10 +6,9 @@ import httpx
 import os
 from dotenv import load_dotenv
 import pandas as pd
+from statsmodels.tsa.holtwinters import ExponentialSmoothing
 import numpy as np
-from statsmodels.tsa.arima.model import ARIMA
 from datetime import datetime, timedelta
-import json
 
 load_dotenv() 
 OBSERVIUM_API_GRAPH= "http://201.150.5.213/graph.php?timestamp_preset=&update=&requesttoken=541f26df36dbe0d23dd0fb48daf000e68fa985ef87916d79894a58caccc9a90d&type=multi-port_bits_separate&id=WyIzMDM1NTIiLCIzMDM1NTEiLCIyNzA2ODYiLCI4NzE1MiIsIjE5MzMyMSIsIjI3MjIxOSIsIjI0MzY4NiIsIjI0MzcxMCIsIjExOTU1OCIsIjE5NTkzMiIsIjEzNzQyMSIsIjExMDc3OSIsIjEyMzkyNyIsIjM2MjQ5OCIsIjE5MzMyMCIsIjI0MzY4NSIsIjI0MzcwOSIsIjI5NDk3NyIsIjI0MzY4NyIsIjI0MzcxMSIsIjU2NjgiLCIxMzAxNiIsIjgyOTkiLCI4MzAwIiwiMjI2NjMzIiwiMjI2NjM1IiwiMTExOTAzIiwiMTU0Njk5IiwiMTIyODgwIiwiMTAzNjE2IiwiMTk1OTI5IiwiMzg2MDg2IiwiMTEwMDQwIiwiNTAzMyIsIjkyNDc0IiwiMjQ0NDAzIiwiMTQzNTQ0IiwiODEzMzQiLCI4NjQ0OSIsIjg5OTczIiwiMjc2MDU5IiwiNjE4MiIsIjYxODEiLCI1NjAxIiwiMTMwODA4IiwiMzk2ODQ4IiwiOTI4IiwiNjAwNiIsIjEyODExMyIsIjE0MzU0MyIsIjEzMDgwNSIsIjE5NTkzMyIsIjE5NTkzMCIsIjEyODEwOSIsIjg3MTUwIiwiMjc0MTE1IiwiMjY3MDM1IiwiMjI5NjM5IiwiMjQzNzE3IiwiMTk1OTMxIiwiMjM3OTk2IiwiMTQzNTQ2IiwiMTk5MzY1IiwiOTQ2NSIsIjEyMzIwOSIsIjI0MjkyOSIsIjY1NzA2IiwiMTM3NDI2IiwiMTA0ODQ5IiwiMTk2MzY3IiwiMjMwNTAzIiwiMTkxNDk0IiwiMTA3IiwiNTI0ODkiLCI5NzA0MyIsIjg3MTU0IiwiMTAzNjIwIiwiMTk4NTE5IiwiOTcwNDQiLCI2MjkxNyIsIjYyOTU2IiwiMjU3OTMxIiwiODI5MCIsIjkyNCIsIjMzOTQ3MyIsIjM4NjA4MCIsIjEwMzYzNCIsIjM4NjA3OSIsIjcxNzYiLCI4MTMzMyIsIjMwMzU2NyIsIjgwNjgiLCI3MTY2IiwiMTAzMiIsIjI3MTU5IiwiMjU4MjMxIiwiNzE3NSIsIjI1Mjc1MyIsIjcxNzQiLCIyNzMzMjQiLCI3MTY3IiwiMjI2NjQxIiwiMjg4NzIwIiwiMjg4NzIyIiwiMTEyOTg5IiwiMTEzNDE5IiwiMzM5NDc4IiwiMjg4NzIxIl0%3D&legend=no&height=60&width=150&loading=lazy&from=1621805777&to=1747949777&format=json"
@@ -42,106 +41,133 @@ async def get_graph_traffic():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-def predict_next_year(data):
-    """Predicts data for the next year using ARIMA model for each time series"""
-    predictions = {
-        "about": "ARIMA predicted data for next year",
-        "meta": {
-            "original_start": data["meta"]["start"],
-            "original_end": data["meta"]["end"],
-            "predicted_start": data["meta"]["end"] + data["meta"]["step"],
-            "predicted_end": data["meta"]["end"] + (365 * 24 * 3600),
-            "step": data["meta"]["step"],
-            "model": "ARIMA(5,1,0)",
-            "legend": data["meta"]["legend"]
-        },
-        "data": []
-    }
+def predict_next_year(data, num_series=214):
+    """Función robusta para predecir sin valores negativos"""
+    predictions = {}
     
-    # For each time point in the data
-    for i in range(len(data["data"])):
-        series_data = data["data"][i]
+    # Si los datos vienen en formato de lista, convertimos a diccionario
+    if isinstance(data, list):
+        data = {str(i): values for i, values in enumerate(data)}
+    
+    # Verificamos si tenemos un diccionario válido
+    if not isinstance(data, dict):
+        raise ValueError("Los datos deben ser un diccionario o una lista")
+    
+    for key in data:
+        values = data[key]
         
-        # Skip if data is empty or all null
-        if not series_data or all(v is None for v in series_data):
-            continue
-            
-        # Convert to pandas Series and clean data
-        s = pd.Series(series_data)
-        s = s.replace([None, "null", "0.0JS:0"], np.nan)
-        s = s.interpolate()
+        # Procesar valores asegurando que sean números positivos
+        processed_values = []
+        for x in values if isinstance(values, (list, np.ndarray)) else []:
+            try:
+                if isinstance(x, str) and 'JS:' in x:
+                    val = float(x.split('JS:')[0])
+                else:
+                    val = float(x)
+                processed_values.append(max(0, val))  # Asegurar no negativos
+            except (ValueError, TypeError):
+                processed_values.append(0.0)
         
-        # Fit ARIMA model
+        # Si no hay suficientes valores, completar con el último valor válido o cero
+        if len(processed_values) < num_series:
+            last_val = processed_values[-1] if len(processed_values) > 0 else 0
+            processed_values.extend([last_val] * (num_series - len(processed_values)))
+        else:
+            processed_values = processed_values[:num_series]  # Recortar si es necesario
+        
+        # Crear modelo de suavizado exponencial
         try:
-            model = ARIMA(s, order=(5,1,0))
-            model_fit = model.fit()
-            
-            # Forecast next year (365 days)
-            forecast = model_fit.forecast(steps=365)
-            
-            # Add predicted data to results
-            predictions["data"].append(forecast.tolist())
-            
-        except Exception as e:
-            print(f"Error predicting series {i}: {str(e)}")
-            # If prediction fails, fill with None
-            predictions["data"].append([None] * 365)
+            with np.errstate(all='ignore'):  # Ignorar warnings numéricos
+                model = ExponentialSmoothing(
+                    processed_values,
+                    trend='add',
+                    seasonal='add',
+                    seasonal_periods=12
+                )
+                fit = model.fit()
+                forecast = fit.forecast(num_series)
+                forecast = [max(0, float(x)) for x in forecast]  # Asegurar no negativos
+        except:
+            # Fallback: usar el último valor o promedio histórico
+            last_value = processed_values[-1] if len(processed_values) > 0 else 0
+            avg_value = np.mean(processed_values) if len(processed_values) > 0 else 0
+            forecast = [max(0, (last_value + avg_value) / 2)] * num_series
+        
+        predictions[key] = forecast
     
     return predictions
 
+def format_predictions(predicted_data, historical_structure):
+    """Formatea las predicciones para que coincidan con la estructura histórica"""
+    # Si los datos históricos son una lista de listas
+    if isinstance(historical_structure, list):
+        # Convertimos el diccionario de predicciones a lista manteniendo el orden
+        return [predicted_data[str(i)] for i in range(len(predicted_data))]
+    
+    # Si los datos históricos son un diccionario con claves específicas
+    elif isinstance(historical_structure, dict):
+        # Creamos un nuevo diccionario con las mismas claves
+        formatted = {}
+        for i, key in enumerate(historical_structure.keys()):
+            formatted[key] = predicted_data[str(i)]
+        return formatted
+    
+    return predicted_data  # Fallback por si acaso
+
 @router.get(
     "/graphs/prediction",
-    summary="Get network traffic prediction with historical data",
-    description="Returns last 6 months of historical data + 1 year prediction",
+    summary="Get traffic data with next year prediction",
+    description="Fetches historical traffic data and generates a prediction for the next year.",
     tags=["Graphs"]
 )
-async def get_graph_prediction_with_history():
+async def get_graph_traffic_with_prediction():
     try:
-        if OBS_USER is None or OBS_PASS is None:
-            raise HTTPException(status_code=500, detail="API credentials not set")
-
-        async with httpx.AsyncClient() as client:
-            # Obtener datos históricos completos
-            historical_response = await client.get(
-                OBSERVIUM_API_GRAPH,
-                auth=(str(OBS_USER), str(OBS_PASS))
-            )
-            
-            if historical_response.status_code != 200:
-                raise HTTPException(status_code=historical_response.status_code, 
-                                 detail="Failed to fetch historical data")
-            
-            historical_data = historical_response.json()
-            
-            # Calcular cuántos puntos son 6 meses (asumiendo step está en segundos)
-            step = historical_data["meta"]["step"]
-            six_months_in_seconds = 6 * 30 * 24 * 60 * 60  # ~6 meses en segundos
-            points_to_keep = six_months_in_seconds // step
-            
-            # Filtrar solo los últimos 6 meses de datos históricos
-            historical_data["data"] = [series[-points_to_keep:] for series in historical_data["data"]]
-            historical_data["meta"]["start"] = historical_data["meta"]["end"] - (points_to_keep * step)
-            
-            # Obtener predicción
-            predicted_data = predict_next_year(historical_data)
-            
-            # Combinar ambos conjuntos de datos
-            combined_data = {
-                "about": "Combined historical and predicted data",
-                "meta": {
-                    "historical_start": historical_data["meta"]["start"],
-                    "historical_end": historical_data["meta"]["end"],
-                    "prediction_start": predicted_data["meta"]["predicted_start"],
-                    "prediction_end": predicted_data["meta"]["predicted_end"],
-                    "step": historical_data["meta"]["step"],
-                    "legend": historical_data["meta"]["legend"],
-                    "cutoff_point": historical_data["meta"]["end"]  # Punto de corte entre histórico y predicción
-                },
-                "historical": historical_data["data"],
-                "prediction": predicted_data["data"]
-            }
-            
-            return combined_data
-            
+        # Obtener datos históricos
+        historical_response = await get_graph_traffic()
+        
+        if not historical_response:
+            raise HTTPException(status_code=404, detail="No data received from API")
+        
+        # Determinar número de series según la leyenda
+        num_series = len(historical_response.get('meta', {}).get('legend', [])) or 214
+        
+        # Generar predicción
+        predicted_data = predict_next_year(
+            historical_response['data'],
+            num_series=num_series
+        )
+        
+        # Formatear las predicciones para que coincidan con la estructura histórica
+        formatted_predictions = format_predictions(
+            predicted_data,
+            historical_response['data']
+        )
+        
+        # Calcular rangos de tiempo
+        meta = historical_response.get('meta', {})
+        historical_start = meta.get('start', 0)
+        historical_end = meta.get('end', 0)
+        step = meta.get('step', 86400)  # Valor por defecto: 1 día
+        
+        # Estructurar respuesta
+        response = {
+            "meta": {
+                "historical_start": historical_start,
+                "historical_end": historical_end,
+                "prediction_start": historical_end + 31536000,  # +1 año
+                "prediction_end": historical_end + 2 * 31536000,  # +2 años
+                "step": step,
+                "legend": meta.get('legend', []),
+                "cutoff_point": historical_end
+            },
+            "historical": historical_response['data'],
+            "prediction": formatted_predictions  # Usamos las predicciones formateadas
+        }
+        
+        return response
+        
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=f"Prediction error: {str(e)}"
+        )
