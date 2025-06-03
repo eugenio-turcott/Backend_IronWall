@@ -3,7 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from contextlib import asynccontextmanager
-from routes import auth, alerts, ports, devices, graphs
+from routes import auth, alerts, ports, devices, graphs,address
 import asyncio
 
 scheduler = AsyncIOScheduler()
@@ -46,3 +46,4 @@ app.include_router(alerts.router)
 app.include_router(devices.router)
 app.include_router(ports.router)
 app.include_router(graphs.router)
+app.include_router(address.router)

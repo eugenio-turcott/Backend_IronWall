@@ -59,3 +59,5 @@ async def Devices_get_id(device_id: int = Path(..., description="The ID of the a
             return response.json()
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
+    
