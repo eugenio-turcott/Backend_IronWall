@@ -4,18 +4,28 @@ from fastapi.security import HTTPBasic, HTTPBasicCredentials
 from typing import Annotated
 import httpx
 import os
-from dotenv import load_dotenv
 import pandas as pd
-from statsmodels.tsa.holtwinters import ExponentialSmoothing
 import numpy as np
 from datetime import datetime, timedelta
+from statsmodels.tsa.holtwinters import ExponentialSmoothing
+from prophet import Prophet
+from supabase import create_client, Client
+from pydantic import BaseModel
 
-load_dotenv() 
-OBSERVIUM_API_GRAPH= "http://201.150.5.213/graph.php?timestamp_preset=&update=&requesttoken=541f26df36dbe0d23dd0fb48daf000e68fa985ef87916d79894a58caccc9a90d&type=multi-port_bits_separate&id=WyIzMDM1NTIiLCIzMDM1NTEiLCIyNzA2ODYiLCI4NzE1MiIsIjE5MzMyMSIsIjI3MjIxOSIsIjI0MzY4NiIsIjI0MzcxMCIsIjExOTU1OCIsIjE5NTkzMiIsIjEzNzQyMSIsIjExMDc3OSIsIjEyMzkyNyIsIjM2MjQ5OCIsIjE5MzMyMCIsIjI0MzY4NSIsIjI0MzcwOSIsIjI5NDk3NyIsIjI0MzY4NyIsIjI0MzcxMSIsIjU2NjgiLCIxMzAxNiIsIjgyOTkiLCI4MzAwIiwiMjI2NjMzIiwiMjI2NjM1IiwiMTExOTAzIiwiMTU0Njk5IiwiMTIyODgwIiwiMTAzNjE2IiwiMTk1OTI5IiwiMzg2MDg2IiwiMTEwMDQwIiwiNTAzMyIsIjkyNDc0IiwiMjQ0NDAzIiwiMTQzNTQ0IiwiODEzMzQiLCI4NjQ0OSIsIjg5OTczIiwiMjc2MDU5IiwiNjE4MiIsIjYxODEiLCI1NjAxIiwiMTMwODA4IiwiMzk2ODQ4IiwiOTI4IiwiNjAwNiIsIjEyODExMyIsIjE0MzU0MyIsIjEzMDgwNSIsIjE5NTkzMyIsIjE5NTkzMCIsIjEyODEwOSIsIjg3MTUwIiwiMjc0MTE1IiwiMjY3MDM1IiwiMjI5NjM5IiwiMjQzNzE3IiwiMTk1OTMxIiwiMjM3OTk2IiwiMTQzNTQ2IiwiMTk5MzY1IiwiOTQ2NSIsIjEyMzIwOSIsIjI0MjkyOSIsIjY1NzA2IiwiMTM3NDI2IiwiMTA0ODQ5IiwiMTk2MzY3IiwiMjMwNTAzIiwiMTkxNDk0IiwiMTA3IiwiNTI0ODkiLCI5NzA0MyIsIjg3MTU0IiwiMTAzNjIwIiwiMTk4NTE5IiwiOTcwNDQiLCI2MjkxNyIsIjYyOTU2IiwiMjU3OTMxIiwiODI5MCIsIjkyNCIsIjMzOTQ3MyIsIjM4NjA4MCIsIjEwMzYzNCIsIjM4NjA3OSIsIjcxNzYiLCI4MTMzMyIsIjMwMzU2NyIsIjgwNjgiLCI3MTY2IiwiMTAzMiIsIjI3MTU5IiwiMjU4MjMxIiwiNzE3NSIsIjI1Mjc1MyIsIjcxNzQiLCIyNzMzMjQiLCI3MTY3IiwiMjI2NjQxIiwiMjg4NzIwIiwiMjg4NzIyIiwiMTEyOTg5IiwiMTEzNDE5IiwiMzM5NDc4IiwiMjg4NzIxIl0%3D&legend=no&height=60&width=150&loading=lazy&from=1621805777&to=1747949777&format=json"
+OBSERVIUM_API_GRAPH = os.getenv("OBSERVIUM_API_GRAPH")
 OBS_USER = os.getenv("API_USERNAME")
 OBS_PASS = os.getenv("API_PASSWORD")
 router = APIRouter()
 security = HTTPBasic()
+
+URL = os.getenv("SUPABASE_URL")
+KEY = os.getenv("SUPABASE_API_KEY")
+if not URL or not KEY:
+    raise RuntimeError("SUPABASE_URL and SUPABASE_KEY environment variables must be set")
+supabase: Client = create_client(URL, KEY)
+
+class GraphData(BaseModel):
+    response: dict  # Aquí aceptamos cualquier estructura JSON
 
 @router.get(
     "/graphs",
@@ -41,133 +51,184 @@ async def get_graph_traffic():
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-def predict_next_year(data, num_series=214):
-    """Función robusta para predecir sin valores negativos"""
-    predictions = {}
-    
-    # Si los datos vienen en formato de lista, convertimos a diccionario
-    if isinstance(data, list):
-        data = {str(i): values for i, values in enumerate(data)}
-    
-    # Verificamos si tenemos un diccionario válido
-    if not isinstance(data, dict):
-        raise ValueError("Los datos deben ser un diccionario o una lista")
-    
-    for key in data:
-        values = data[key]
-        
-        # Procesar valores asegurando que sean números positivos
-        processed_values = []
-        for x in values if isinstance(values, (list, np.ndarray)) else []:
-            try:
-                if isinstance(x, str) and 'JS:' in x:
-                    val = float(x.split('JS:')[0])
-                else:
-                    val = float(x)
-                processed_values.append(max(0, val))  # Asegurar no negativos
-            except (ValueError, TypeError):
-                processed_values.append(0.0)
-        
-        # Si no hay suficientes valores, completar con el último valor válido o cero
-        if len(processed_values) < num_series:
-            last_val = processed_values[-1] if len(processed_values) > 0 else 0
-            processed_values.extend([last_val] * (num_series - len(processed_values)))
-        else:
-            processed_values = processed_values[:num_series]  # Recortar si es necesario
-        
-        # Crear modelo de suavizado exponencial
-        try:
-            with np.errstate(all='ignore'):  # Ignorar warnings numéricos
-                model = ExponentialSmoothing(
-                    processed_values,
-                    trend='add',
-                    seasonal='add',
-                    seasonal_periods=12
-                )
-                fit = model.fit()
-                forecast = fit.forecast(num_series)
-                forecast = [max(0, float(x)) for x in forecast]  # Asegurar no negativos
-        except:
-            # Fallback: usar el último valor o promedio histórico
-            last_value = processed_values[-1] if len(processed_values) > 0 else 0
-            avg_value = np.mean(processed_values) if len(processed_values) > 0 else 0
-            forecast = [max(0, (last_value + avg_value) / 2)] * num_series
-        
-        predictions[key] = forecast
-    
-    return predictions
+async def fetch_graph_data():
+    try:
+        if OBS_USER is None or OBS_PASS is None:
+            raise HTTPException(status_code=500, detail="API_USERNAME or API_PASSWORD environment variable not set")
 
-def format_predictions(predicted_data, historical_structure):
-    """Formatea las predicciones para que coincidan con la estructura histórica"""
-    # Si los datos históricos son una lista de listas
-    if isinstance(historical_structure, list):
-        # Convertimos el diccionario de predicciones a lista manteniendo el orden
-        return [predicted_data[str(i)] for i in range(len(predicted_data))]
-    
-    # Si los datos históricos son un diccionario con claves específicas
-    elif isinstance(historical_structure, dict):
-        # Creamos un nuevo diccionario con las mismas claves
-        formatted = {}
-        for i, key in enumerate(historical_structure.keys()):
-            formatted[key] = predicted_data[str(i)]
-        return formatted
-    
-    return predicted_data  # Fallback por si acaso
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                f"{OBSERVIUM_API_GRAPH}",
+                auth=(str(OBS_USER), str(OBS_PASS))
+            )
+
+            if response.status_code != 200:
+                raise HTTPException(status_code=response.status_code, detail="Failed to fetch device")
+
+            return response.json()
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 @router.get(
-    "/graphs/prediction",
-    summary="Get traffic data with next year prediction",
-    description="Fetches historical traffic data and generates a prediction for the next year.",
+    "/graphs_prediction",
+    summary="Get graph data with 12-month prediction (Prophet)",
+    description="Returns graph data extended with 12-month predictions for each valid time series using Prophet",
     tags=["Graphs"]
 )
-async def get_graph_traffic_with_prediction():
+async def get_graph_prediction():
     try:
-        # Obtener datos históricos
-        historical_response = await get_graph_traffic()
-        
-        if not historical_response:
-            raise HTTPException(status_code=404, detail="No data received from API")
-        
-        # Determinar número de series según la leyenda
-        num_series = len(historical_response.get('meta', {}).get('legend', [])) or 214
-        
-        # Generar predicción
-        predicted_data = predict_next_year(
-            historical_response['data'],
-            num_series=num_series
-        )
-        
-        # Formatear las predicciones para que coincidan con la estructura histórica
-        formatted_predictions = format_predictions(
-            predicted_data,
-            historical_response['data']
-        )
-        
-        # Calcular rangos de tiempo
-        meta = historical_response.get('meta', {})
-        historical_start = meta.get('start', 0)
-        historical_end = meta.get('end', 0)
-        step = meta.get('step', 86400)  # Valor por defecto: 1 día
-        
-        # Estructurar respuesta
-        response = {
+        original_data = await fetch_graph_data()
+
+        original_end = original_data['meta']['end']
+        prediction_start = original_end
+        prediction_end = original_end + (36 * 30 * 24 * 3600)
+
+        response_data = {
             "meta": {
-                "historical_start": historical_start,
-                "historical_end": historical_end,
-                "prediction_start": historical_end + 31536000,  # +1 año
-                "prediction_end": historical_end + 2 * 31536000,  # +2 años
-                "step": step,
-                "legend": meta.get('legend', []),
-                "cutoff_point": historical_end
+                "start": original_data['meta']['start'],
+                "end": original_data['meta']['end'],
+                "start_prediction": prediction_start,
+                "end_prediction": prediction_end,
+                "step": original_data['meta']['step'],
+                "legend": original_data['meta']['legend'],
+                "gprints": original_data['meta']['gprints'],
+                "rules": original_data['meta']['rules']
             },
-            "historical": historical_response['data'],
-            "prediction": formatted_predictions  # Usamos las predicciones formateadas
+            "data": [day.copy() for day in original_data['data']]
         }
-        
-        return response
-        
+
+        num_ips = len(original_data['meta']['legend']) // 2
+        freq_seconds = original_data['meta']['step']
+        freq_days = freq_seconds / 86400
+
+        for i in range(num_ips):
+            pos_idx = i
+            neg_idx = i + num_ips
+
+            for idx, is_negative in [(pos_idx, False), (neg_idx, True)]:
+                values = []
+                dates = []
+                for day_idx, day_values in enumerate(original_data['data']):
+                    if isinstance(day_values, list) and idx < len(day_values):
+                        value = day_values[idx]
+                        if value is not None:
+                            ts = datetime.fromtimestamp(original_data['meta']['start']) + timedelta(days=day_idx * freq_days)
+                            values.append(-value if is_negative else value)
+                            dates.append(ts)
+
+                if len(values) < 10:
+                    continue
+
+                df = pd.DataFrame({'ds': dates, 'y': values})
+                try:
+                    model = Prophet(daily_seasonality=True)
+                    model.fit(df)
+                    future = model.make_future_dataframe(periods=12, freq='30D')
+                    forecast = model.predict(future)
+
+                    pred_values = forecast.tail(36)['yhat'].tolist()
+
+                    last_day = len(original_data['data'])
+                    for j, val in enumerate(pred_values):
+                        day_idx = last_day + j
+                        while len(response_data['data']) <= day_idx:
+                            response_data['data'].append([None] * len(original_data['meta']['legend']))
+                        response_data['data'][day_idx][idx] = -abs(val) if is_negative else max(0, val)
+
+                except Exception as e:
+                    print(f"Failed to predict using Prophet for index {idx}: {str(e)}")
+
+        return response_data
+
     except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Prediction error: {str(e)}"
-        )
+        raise HTTPException(status_code=500, detail=str(e))
+
+async def save_graph_data():
+    """Función async para guardar datos de gráficos, manteniendo solo un registro en la tabla"""
+    try:
+        # Obtener datos de la API
+        data = await fetch_graph_data()
+        
+        # Verificar y limpiar registros existentes
+        existing = supabase.table("graphs").select("*").execute()
+        if len(existing.data) > 0:
+            # Eliminar todos los registros existentes
+            supabase.table("graphs").delete().neq("id", "").execute()
+        
+        # Insertar el nuevo registro
+        result = supabase.table("graphs").insert({
+            "response": data
+        }).execute()
+        
+        return {
+            "message": "Graph data stored successfully",
+            "id": result.data[0]["id"]
+        }
+    except Exception as e:
+        print(f"Error saving graph data: {str(e)}")
+        raise
+
+async def save_prediction_data():
+    """Función async para guardar datos de predicción, manteniendo solo un registro en la tabla"""
+    try:
+        # Obtener datos de predicción
+        prediction_data = await get_graph_prediction()
+        
+        # Verificar y limpiar registros existentes
+        existing = supabase.table("graphs_prediction").select("*").execute()
+        if len(existing.data) > 0:
+            # Eliminar todos los registros existentes
+            supabase.table("graphs_prediction").delete().neq("id", "").execute()
+        
+        # Insertar el nuevo registro
+        result = supabase.table("graphs_prediction").insert({
+            "response": prediction_data
+        }).execute()
+        
+        return {
+            "message": "Prediction data stored successfully",
+            "id": result.data[0]["id"]
+        }
+    except Exception as e:
+        print(f"Error saving prediction data: {str(e)}")
+        raise
+
+@router.get(
+    "/graphs_db",
+    summary="Get stored graph data from Supabase",
+    description="Retrieves the latest graph data stored in Supabase database",
+    tags=["Graphs DB"],
+    response_model=dict  # Esto ayuda a la documentación de OpenAPI
+)
+async def get_graphs_from_db():
+    try:
+        # Obtener el único registro de la tabla graphs
+        response = supabase.table("graphs").select("response").execute()
+        
+        if not response.data:
+            raise HTTPException(status_code=404, detail="No graph data found in database")
+        
+        # Retornar directamente el contenido del campo response
+        return response.data[0]["response"]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+    
+@router.get(
+    "/graphs_prediction_db",
+    summary="Get stored prediction data from Supabase",
+    description="Retrieves the latest prediction data stored in Supabase database",
+    tags=["Graphs DB"],
+    response_model=dict  # Esto ayuda a la documentación de OpenAPI
+)
+async def get_prediction_from_db():
+    try:
+        # Obtener el único registro de la tabla graphs_prediction
+        response = supabase.table("graphs_prediction").select("response").execute()
+        
+        if not response.data:
+            raise HTTPException(status_code=404, detail="No prediction data found in database")
+        
+        # Retornar directamente el contenido del campo response
+        return response.data[0]["response"]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")

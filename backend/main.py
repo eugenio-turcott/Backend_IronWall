@@ -14,17 +14,37 @@ async def scheduled_save_alerts():
     from routes.alerts import save_alerts_to_db
     await save_alerts_to_db()
 
+async def scheduled_save_graphs():
+    from routes.graphs import save_graph_data
+    await save_graph_data()
+
+async def scheduled_save_predictions():
+    from routes.graphs import save_prediction_data
+    await save_prediction_data()
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global loop
     loop = asyncio.get_running_loop()  # guardamos el event loop principal
-    # Ejecutar una vez al iniciar
-    asyncio.create_task(scheduled_save_alerts())
+
+    asyncio.create_task(scheduled_save_predictions())
 
     # Ejecutar cada 5 minutos
     scheduler.add_job(
         lambda: asyncio.run_coroutine_threadsafe(scheduled_save_alerts(), loop if loop is not None else asyncio.get_event_loop()),
         trigger=IntervalTrigger(minutes=180)
+    )
+
+    scheduler.add_job(
+        lambda: asyncio.run_coroutine_threadsafe(scheduled_save_graphs(), loop),
+        trigger=IntervalTrigger(hours=24),
+        id="save_graphs"
+    )
+    
+    scheduler.add_job(
+        lambda: asyncio.run_coroutine_threadsafe(scheduled_save_predictions(), loop),
+        trigger=IntervalTrigger(hours=24),
+        id="save_predictions"
     )
 
     scheduler.start()
