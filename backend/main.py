@@ -27,7 +27,7 @@ async def lifespan(app: FastAPI):
     global loop
     loop = asyncio.get_running_loop()  # guardamos el event loop principal
 
-    asyncio.create_task(scheduled_save_predictions())
+    # asyncio.create_task(scheduled_save_predictions())
 
     # Ejecutar cada 5 minutos
     scheduler.add_job(
