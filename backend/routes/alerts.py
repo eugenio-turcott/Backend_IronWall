@@ -35,7 +35,7 @@ async def Alerts_get_all():
     try:
         async with httpx.AsyncClient() as client:
             response = await client.get(
-                f"{OBSERVIUM_API_BASE}/alerts/?pagination=1&pagesize=50",
+                f"{OBSERVIUM_API_BASE}/alerts/?pagination=1&pagesize=1000",
                 auth=(OBS_USER,OBS_PASS)
             )
             if response.status_code != 200:

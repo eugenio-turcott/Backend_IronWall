@@ -22,12 +22,25 @@ async def scheduled_save_predictions():
     from routes.graphs import save_prediction_data
     await save_prediction_data()
 
+async def scheduled_save_ports_failures():
+    from routes.ports import save_failures_data
+    await save_failures_data()
+
+async def scheduled_save_consumption_internet():
+    from routes.ports import save_internet_consumption_data
+    await save_internet_consumption_data()
+
+async def scheduled_save_consumption_non_internet():
+    from routes.ports import save_non_internet_consumption_data
+    await save_non_internet_consumption_data()
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global loop
     loop = asyncio.get_running_loop()  # guardamos el event loop principal
 
-    # asyncio.create_task(scheduled_save_predictions())
+    # asyncio.create_task(scheduled_save_consumption_internet())
+    # asyncio.create_task(scheduled_save_consumption_non_internet())
 
     # Ejecutar cada 5 minutos
     scheduler.add_job(
@@ -45,6 +58,24 @@ async def lifespan(app: FastAPI):
         lambda: asyncio.run_coroutine_threadsafe(scheduled_save_predictions(), loop),
         trigger=IntervalTrigger(hours=24),
         id="save_predictions"
+    )
+
+    scheduler.add_job(
+        lambda: asyncio.run_coroutine_threadsafe(scheduled_save_ports_failures(), loop),
+        trigger=IntervalTrigger(hours=24),
+        id="save_ports_failures"
+    )
+
+    scheduler.add_job(
+        lambda: asyncio.run_coroutine_threadsafe(scheduled_save_consumption_internet(), loop),
+        trigger=IntervalTrigger(hours=24),
+        id="save_consumption_internet"
+    )
+
+    scheduler.add_job(
+        lambda: asyncio.run_coroutine_threadsafe(scheduled_save_consumption_non_internet(), loop),
+        trigger=IntervalTrigger(hours=24),
+        id="save_consumption_non_internet"
     )
 
     scheduler.start()
